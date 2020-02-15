@@ -431,7 +431,7 @@ func TestSubmitInvalidVersion(t *testing.T) {
 	}
 	go func() {
 		for {
-			<- client1Updates
+			<-client1Updates
 		}
 	}()
 	s.Submit(client1, *delta.New(nil).Insert("a", nil), 10)
@@ -455,7 +455,7 @@ func TestSubmitTooOldVersion(t *testing.T) {
 	}
 	go func() {
 		for {
-			<- client1Updates
+			<-client1Updates
 		}
 	}()
 	s.Submit(client1, *delta.New(nil).Insert("a", nil), 6)
