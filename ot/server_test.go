@@ -27,10 +27,11 @@ func TestNewClient(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	_, change1, _, err := s.NewClient()
+	_, change1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	change1 := <-change1Updates
 	if change1.Version != 0 {
 		t.Fatalf("Invalid version: %d", change1.Version)
 	}
@@ -46,14 +47,16 @@ func TestSingleUpdate(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, client1Updates, err := s.NewClient()
+	client1, client1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, client2Updates, err := s.NewClient()
+	<-client1Updates
+	_, client2Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-client2Updates
 	d1 := *delta.New(nil).Retain(5, nil).Insert("1", nil)
 	s.Submit(client1, d1, 0)
 	count := 0
@@ -91,17 +94,19 @@ func TestNewClientWithVersions(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, client1Updates, err := s.NewClient()
+	client1, client1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-client1Updates
 	d1 := *delta.New(nil).Retain(5, nil).Insert("1", nil)
 	s.Submit(client1, d1, 0)
 	<-client1Updates
-	_, change2, _, err := s.NewClient()
+	_, change2Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	change2 := <-change2Updates
 	if change2.Version != 1 {
 		t.Fatalf("Invalid version: %d", change2.Version)
 	}
@@ -129,11 +134,12 @@ func TestMultipleUpdate(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
-		client1, _, client1Updates, err := s.NewClient()
+		client1, client1Updates, err := s.NewClient()
 		if err != nil {
 			errChan <- err
 			return
 		}
+		<-client1Updates
 		c1ch <- client1
 		change1 := <-client1Updates
 		if change1.Version != 1 {
@@ -156,11 +162,12 @@ func TestMultipleUpdate(t *testing.T) {
 		wg.Done()
 	}()
 	go func() {
-		client2, _, client2Updates, err := s.NewClient()
+		client2, client2Updates, err := s.NewClient()
 		if err != nil {
 			errChan <- err
 			return
 		}
+		<-client2Updates
 		c2ch <- client2
 		change3 := <-client2Updates
 		if change3.Version != 1 {
@@ -223,11 +230,12 @@ func TestMultipleUpdateMultipleVersions(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
-		client1, _, client1Updates, err := s.NewClient()
+		client1, client1Updates, err := s.NewClient()
 		if err != nil {
 			errChan <- err
 			return
 		}
+		<-client1Updates
 		c1ch <- client1
 		change1 := <-client1Updates
 		if change1.Version != 1 {
@@ -259,11 +267,12 @@ func TestMultipleUpdateMultipleVersions(t *testing.T) {
 		wg.Done()
 	}()
 	go func() {
-		client2, _, client2Updates, err := s.NewClient()
+		client2, client2Updates, err := s.NewClient()
 		if err != nil {
 			errChan <- err
 			return
 		}
+		<-client2Updates
 		c2ch <- client2
 		change3 := <-client2Updates
 		if change3.Version != 1 {
@@ -328,10 +337,11 @@ func TestStop(t *testing.T) {
 		s.Start()
 		wg.Done()
 	}()
-	_, _, _, err := s.NewClient()
+	_, u, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-u
 	go func() {
 		wg.Wait()
 		wgChan <- true
@@ -358,7 +368,7 @@ func TestCloseClient(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, client1Updates, err := s.NewClient()
+	client1, client1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,12 +400,13 @@ func TestConflictIds(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, _, err := s.NewClient()
+	client1, u, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-u
 	atomic.StoreUint32(&s.lastClientId, client1-1)
-	_, _, c, err := s.NewClient()
+	_, c, err := s.NewClient()
 	_, ok := <-c
 	if ok {
 		t.Fatalf("Channel is not closed!")
@@ -425,17 +436,21 @@ func TestSubmitInvalidVersion(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, client1Updates, err := s.NewClient()
+	client1, client1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		for {
+		for i := 0; i < 2; i++ {
 			<-client1Updates
 		}
+		wg.Done()
 	}()
 	s.Submit(client1, *delta.New(nil).Insert("a", nil), 10)
 	s.Submit(client1, *delta.New(nil).Insert("b", nil), 0)
+	wg.Wait()
 	text := deltaToText(*s.CurrentChange().Delta)
 	if text != "bLorem ipsum" {
 		t.Fatalf("Invalid text: %s", text)
@@ -449,17 +464,21 @@ func TestSubmitTooOldVersion(t *testing.T) {
 	go func() {
 		s.Start()
 	}()
-	client1, _, client1Updates, err := s.NewClient()
+	client1, client1Updates, err := s.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		for {
+		for i := 0; i < 2; i++ {
 			<-client1Updates
 		}
+		wg.Done()
 	}()
 	s.Submit(client1, *delta.New(nil).Insert("a", nil), 6)
 	s.Submit(client1, *delta.New(nil).Insert("b", nil), 10)
+	wg.Wait()
 	text := deltaToText(*s.CurrentChange().Delta)
 	if text != "bLorem ipsum" {
 		t.Fatalf("Invalid text: %s", text)

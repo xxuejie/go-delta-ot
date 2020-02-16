@@ -68,9 +68,7 @@ func (s *Server) CurrentChange() Change {
 	}
 }
 
-func (s *Server) NewClient() (uint32, Change, <-chan Change, error) {
-	change := s.CurrentChange()
-
+func (s *Server) NewClient() (uint32, <-chan Change, error) {
 	c := &client{
 		lastSubmittedVersion: 0,
 		update:               make(chan Change),
@@ -82,7 +80,7 @@ func (s *Server) NewClient() (uint32, Change, <-chan Change, error) {
 		clientId: clientId,
 	}
 
-	return clientId, change, c.update, nil
+	return clientId, c.update, nil
 }
 
 func (s *Server) Submit(clientId uint32, d delta.Delta, version uint32) {
@@ -121,6 +119,7 @@ func (s *Server) Start() {
 				close(newClient.c.update)
 				continue
 			}
+			newClient.c.update <- s.CurrentChange()
 			s.clients[newClient.clientId] = newClient.c
 		case clientIdToClose := <-s.closeClients:
 			if c, ok := s.clients[clientIdToClose]; ok {
