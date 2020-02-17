@@ -15,3 +15,7 @@ matrix:
       script:
         - make fmt
         - git diff --exit-code
+    - name: coverage
+      script:
+        - make coverage
+        - bash <(curl -s https://codecov.io/bash)

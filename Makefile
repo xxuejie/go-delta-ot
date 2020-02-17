@@ -7,4 +7,7 @@ test:
 race:
 	go test ./... -v -race -test.timeout=30s
 
-.PHONY: fmt race test
+coverage:
+	go test ./... -v -race -test.timeout=30s -coverprofile=coverage.txt -covermode=atomic
+
+.PHONY: coverage fmt race test
