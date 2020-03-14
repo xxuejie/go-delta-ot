@@ -64,7 +64,7 @@ func (s *Server) CurrentChange() Change {
 
 	return Change{
 		Version: s.version,
-		Delta:   &s.d,
+		Delta:   cloneDelta(&s.d),
 	}
 }
 
@@ -166,7 +166,7 @@ func (s *Server) Start() {
 				} else {
 					data = append(data, Change{
 						Version: s.version,
-						Delta:   &request.d,
+						Delta:   cloneDelta(&request.d),
 					})
 				}
 			}
@@ -183,4 +183,12 @@ func (s *Server) Start() {
 	s.clients = make(map[uint32]*client)
 	atomic.CompareAndSwapInt32(&s.running, 1, 0)
 	s.stoppingChan <- true
+}
+
+func cloneDelta(d *delta.Delta) *delta.Delta {
+	ops := make([]delta.Op, len(d.Ops))
+	for i, op := range d.Ops {
+		ops[i] = op
+	}
+	return delta.New(ops)
 }

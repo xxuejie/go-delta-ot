@@ -484,3 +484,24 @@ func TestSubmitTooOldVersion(t *testing.T) {
 		t.Fatalf("Invalid text: %s", text)
 	}
 }
+
+func TestChangeAfterInitialUpdate(t *testing.T) {
+	s := NewServer(*delta.New(nil))
+	go func() {
+		s.Start()
+	}()
+
+	client1, change1Updates, err := s.NewClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	change1 := <-change1Updates
+	d1 := *delta.New(nil).Insert("12", nil)
+	s.Submit(client1, d1, 0)
+	<-change1Updates
+
+	text := deltaToText(*change1.Delta)
+	if text != "" {
+		t.Fatalf("Unexpected text: %s", text)
+	}
+}
