@@ -9,11 +9,11 @@ import (
 // * When Delta is present, it is a change message
 // * When Delta is missing, it serves as an ack message
 type Change struct {
-	Delta   *delta.Delta
-	Version uint32
+	Delta   *delta.Delta `json:"delta,omitempty"`
+	Version uint32       `json:"version"`
 }
 
 type MultiFileChange struct {
-	Id     uint32
-	Change Change
+	Id     uint32 `json:"id"`
+	Change Change `json:"change"`
 }
