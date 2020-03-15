@@ -25,13 +25,7 @@ type newClient struct {
 }
 
 type Server struct {
-	d       delta.Delta
-	version uint32
-	// Reverts serve 2 purposes:
-	//
-	// * Provide revert function
-	// * Keep old versions of the document for slow clients
-	reverts []delta.Delta
+	file *File
 
 	requests     chan request
 	newClients   chan newClient
@@ -48,7 +42,7 @@ type Server struct {
 
 func NewServer(d delta.Delta) *Server {
 	return &Server{
-		d:            d,
+		file:         NewFile(d),
 		clients:      make(map[uint32]*client),
 		requests:     make(chan request),
 		newClients:   make(chan newClient),
@@ -62,10 +56,7 @@ func (s *Server) CurrentChange() Change {
 	s.dataMux.Lock()
 	defer s.dataMux.Unlock()
 
-	return Change{
-		Version: s.version,
-		Delta:   cloneDelta(&s.d),
-	}
+	return s.file.CurrentChange()
 }
 
 func (s *Server) NewClient() (uint32, <-chan Change, error) {
@@ -129,32 +120,14 @@ func (s *Server) Start() {
 		case request := <-s.requests:
 			s.dataMux.Lock()
 			lastSubmittedVersion := request.version
-			if request.version > s.version {
-				// Skipping invalid request
-				s.dataMux.Unlock()
-				continue
-			} else if request.version < s.version {
-				revertedVersions := int(s.version - request.version)
-				if revertedVersions <= 0 || revertedVersions > len(s.reverts) {
-					// Client uses too old version, we cannot process it
-					s.dataMux.Unlock()
-					continue
-				}
-
-				revertedOperation := delta.New(nil)
-				for i := 0; i < revertedVersions; i++ {
-					revertedOperation = revertedOperation.Compose(s.reverts[len(s.reverts)-1-i])
-				}
-				operation := *revertedOperation.Invert(&s.d)
-
-				request.d = *operation.Transform(request.d, true)
-				request.version = s.version
-			}
-			revert := *request.d.Invert(&s.d)
-			s.d = *s.d.Compose(request.d)
-			s.version += 1
-			s.reverts = append(s.reverts, revert)
+			newChange, err := s.file.Submit(Change{
+				Delta:   &request.d,
+				Version: request.version,
+			})
 			s.dataMux.Unlock()
+			if err != nil {
+				continue
+			}
 
 			channels := make([]chan Change, 0, len(s.clients))
 			data := make([]Change, 0, len(s.clients))
@@ -162,12 +135,9 @@ func (s *Server) Start() {
 				channels = append(channels, c.update)
 				if clientId == request.clientId {
 					c.lastSubmittedVersion = lastSubmittedVersion
-					data = append(data, Change{Version: s.version})
+					data = append(data, Change{Version: newChange.Version})
 				} else {
-					data = append(data, Change{
-						Version: s.version,
-						Delta:   cloneDelta(&request.d),
-					})
+					data = append(data, newChange)
 				}
 			}
 
@@ -183,12 +153,4 @@ func (s *Server) Start() {
 	s.clients = make(map[uint32]*client)
 	atomic.CompareAndSwapInt32(&s.running, 1, 0)
 	s.stoppingChan <- true
-}
-
-func cloneDelta(d *delta.Delta) *delta.Delta {
-	ops := make([]delta.Op, len(d.Ops))
-	for i, op := range d.Ops {
-		ops[i] = op
-	}
-	return delta.New(ops)
 }

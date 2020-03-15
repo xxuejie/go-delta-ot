@@ -1,6 +1,7 @@
 package ot
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -156,6 +157,10 @@ func TestMultipleUpdate(t *testing.T) {
 			return
 		}
 		if !reflect.DeepEqual(*change2.Delta, transformedD2) {
+			d1, _ := json.Marshal(change2.Delta)
+			fmt.Printf("Actual: %s", d1)
+			d2, _ := json.Marshal(transformedD2)
+			fmt.Printf("Expected: %s", d2)
 			errChan <- fmt.Errorf("Invalid version 2 change to client 1!")
 			return
 		}
@@ -460,7 +465,7 @@ func TestSubmitInvalidVersion(t *testing.T) {
 func TestSubmitTooOldVersion(t *testing.T) {
 	d := *delta.New(nil).Insert("Lorem ipsum", nil)
 	s := NewServer(d)
-	s.version = 10
+	s.file.version = 10
 	go func() {
 		s.Start()
 	}()
