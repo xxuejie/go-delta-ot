@@ -12,3 +12,8 @@ type Change struct {
 	Delta   *delta.Delta
 	Version uint32
 }
+
+type MultiFileChange struct {
+	Id     uint32
+	Change Change
+}

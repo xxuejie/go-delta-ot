@@ -12,16 +12,6 @@ import (
 	"github.com/fmpwizard/go-quilljs-delta/delta"
 )
 
-func deltaToText(d delta.Delta) string {
-	result := make([]rune, 0)
-	for _, op := range d.Ops {
-		if op.Insert != nil {
-			result = append(result, op.Insert...)
-		}
-	}
-	return string(result)
-}
-
 func TestNewClient(t *testing.T) {
 	d := *delta.New(nil).Insert("Lorem ipsum", nil)
 	s := NewServer(d)
