@@ -65,8 +65,6 @@ func (f *File) Submit(change Change) (Change, error) {
 	f.version += 1
 	f.reverts = append(f.reverts, revert)
 
-	return Change{
-		Delta:   cloneDelta(change.Delta),
-		Version: f.version,
-	}, nil
+	change.Version = f.version
+	return change, nil
 }

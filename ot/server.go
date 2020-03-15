@@ -137,7 +137,11 @@ func (s *Server) Start() {
 					c.lastSubmittedVersion = lastSubmittedVersion
 					data = append(data, Change{Version: newChange.Version})
 				} else {
-					data = append(data, newChange)
+					// Ensure each different client gets a unique copy
+					data = append(data, Change{
+						Delta:   cloneDelta(newChange.Delta),
+						Version: newChange.Version,
+					})
 				}
 			}
 
