@@ -71,6 +71,62 @@ func TestMultiFileSingleUpdate(t *testing.T) {
 	}
 }
 
+func TestMultiFileAppend(t *testing.T) {
+	s := NewMultiFileServer()
+	go func() {
+		s.Start()
+	}()
+	d := *delta.New(nil).Insert("Lorem ipsum", nil)
+	if !(<-s.NewFile(1, d)) {
+		t.Fatalf("Failed to create file 1")
+	}
+	client1Success, client1Updates := s.NewClient(1)
+	if !(<-client1Success) {
+		t.Fatalf("Failed to setup client 1")
+	}
+	<-client1Updates
+	client2Success, client2Updates := s.NewClient(2)
+	if !(<-client2Success) {
+		t.Fatalf("Failed to setup client 2")
+	}
+	<-client2Updates
+	s.Append(1, 1, "abcde")
+	count := 0
+	var change1 MultiFileChange
+	var change2 MultiFileChange
+	for count < 2 {
+		select {
+		case change1 = <-client1Updates:
+			count += 1
+		case change2 = <-client2Updates:
+			count += 1
+		}
+	}
+	if change1.Id != 1 {
+		t.Fatalf("Invalid file ID: %d", change1.Id)
+	}
+	if change1.Change.Version != 1 {
+		t.Fatalf("Invalid version: %d", change1.Change.Version)
+	}
+	if change1.Change.Delta != nil {
+		t.Fatalf("Ack should not have delta!")
+	}
+	if change2.Id != 1 {
+		t.Fatalf("Invalid file ID: %d", change2.Id)
+	}
+	if change2.Change.Version != 1 {
+		t.Fatalf("Invalid version: %d", change2.Change.Version)
+	}
+	d1 := delta.New(nil).Retain(11, nil).Insert("abcde", nil)
+	if !reflect.DeepEqual(d1, change2.Change.Delta) {
+		t.Fatalf("Invalid change!")
+	}
+	text := deltaToText(*s.CurrentChange(1).Change.Delta)
+	if text != "Lorem ipsumabcde" {
+		t.Fatalf("Invalid text: %s", text)
+	}
+}
+
 func TestFetchFileContent(t *testing.T) {
 	s := NewMultiFileServer()
 	go func() {
@@ -96,6 +152,26 @@ func TestFetchFileContent(t *testing.T) {
 	change2 := s.CurrentChange(20)
 	if change2 != nil {
 		t.Fatalf("Fetching not existed file should fail!")
+	}
+}
+
+func TestMultiFileServerFetchAll(t *testing.T) {
+	s := NewMultiFileServer()
+	go func() {
+		s.Start()
+	}()
+	d := *delta.New(nil).Insert("Lorem ipsum", nil)
+	if !(<-s.NewFile(10, d)) {
+		t.Fatalf("Failed to create file")
+	}
+	d = *delta.New(nil).Insert("Lorem ipsum2", nil)
+	if !(<-s.NewFile(20, d)) {
+		t.Fatalf("Failed to create file")
+	}
+
+	changes := s.AllChanges()
+	if len(changes) != 2 {
+		t.Fatalf("Invalid number of files")
 	}
 }
 
