@@ -390,3 +390,52 @@ func TestMultiFileBroadcastNewFile(t *testing.T) {
 		t.Fatalf("Invalid change 2 delta!")
 	}
 }
+
+func TestMultiFileChangeAll(t *testing.T) {
+	s := NewMultiFileServer()
+	go func() {
+		s.Start()
+	}()
+	d := *delta.New(nil).Insert("Lorem ipsum", nil)
+	if !(<-s.NewFile(1, d)) {
+		t.Fatalf("Failed to create file 1")
+	}
+	d2 := *delta.New(nil).Insert("Lorem ipsum abc", nil)
+	if !(<-s.NewFile(2, d2)) {
+		t.Fatalf("Failed to create file 2")
+	}
+	client1Success, client1Updates := s.NewClient(1)
+	if !(<-client1Success) {
+		t.Fatalf("Failed to setup client 1")
+	}
+	<-client1Updates
+	<-client1Updates
+	s.FetchAndChangeAll(1, func(changes []MultiFileChange) []MultiFileChange {
+		newChanges := make([]MultiFileChange, len(changes))
+		for i, change := range changes {
+			newChanges[i] = MultiFileChange{
+				Id: change.Id,
+				Change: Change{
+					Delta:   delta.New(nil).Retain(change.Change.Delta.Length(), nil).Insert("12345", nil),
+					Version: change.Change.Version,
+				},
+			}
+		}
+		return newChanges
+	})
+	<-client1Updates
+	<-client1Updates
+	changes := s.AllChanges()
+	for _, change := range changes {
+		text := deltaToText(*change.Change.Delta)
+		if change.Id == 1 {
+			if text != "Lorem ipsum12345" {
+				t.Fatalf("Invalid text for file 1: %s", text)
+			}
+		} else {
+			if text != "Lorem ipsum abc12345" {
+				t.Fatalf("Invalid text for file 1: %s", text)
+			}
+		}
+	}
+}

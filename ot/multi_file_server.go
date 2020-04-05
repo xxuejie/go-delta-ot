@@ -7,6 +7,7 @@ import (
 )
 
 type ChangeFunction func(d delta.Delta) delta.Delta
+type ChangeAllFunction func(changes []MultiFileChange) []MultiFileChange
 
 type multiFileClient struct {
 	versions map[uint32]uint32
@@ -28,6 +29,11 @@ type multiFileNewFile struct {
 type multiFileChange struct {
 	f        ChangeFunction
 	fileId   uint32
+	clientId uint32
+}
+
+type multiFileChangeAll struct {
+	f        ChangeAllFunction
 	clientId uint32
 }
 
@@ -53,6 +59,7 @@ type multiFileCommand struct {
 	closeFile     *multiFileCloseFile
 	submit        *multiFileSubmit
 	change        *multiFileChange
+	changeAll     *multiFileChangeAll
 	fetch         *multiFileFetch
 	fetchAll      chan<- []MultiFileChange
 }
@@ -143,6 +150,15 @@ func (s *MultiFileServer) FetchAndChange(clientId uint32, fileId uint32, f Chang
 		change: &multiFileChange{
 			clientId: clientId,
 			fileId:   fileId,
+			f:        f,
+		},
+	}
+}
+
+func (s *MultiFileServer) FetchAndChangeAll(clientId uint32, f ChangeAllFunction) {
+	s.commands <- multiFileCommand{
+		changeAll: &multiFileChangeAll{
+			clientId: clientId,
 			f:        f,
 		},
 	}
@@ -274,6 +290,31 @@ func (s *MultiFileServer) Start() {
 
 				if newChange != nil {
 					s.broadcastChange(*newChange, changeCommand.fileId, changeCommand.clientId)
+				}
+			}
+			if changeAllCommand := command.changeAll; changeAllCommand != nil {
+				contents := make([]MultiFileChange, 0)
+				for id, file := range s.files {
+					contents = append(contents, MultiFileChange{
+						Id:     id,
+						Change: file.CurrentChange(),
+					})
+				}
+				changes := changeAllCommand.f(contents)
+				broadcastChanges := make([]MultiFileChange, 0)
+				for _, change := range changes {
+					if file, ok := s.files[change.Id]; ok {
+						c, err := file.Submit(change.Change)
+						if err == nil {
+							broadcastChanges = append(broadcastChanges, MultiFileChange{
+								Id:     change.Id,
+								Change: c,
+							})
+						}
+					}
+				}
+				for _, change := range broadcastChanges {
+					s.broadcastChange(change.Change, change.Id, changeAllCommand.clientId)
 				}
 			}
 			if fetchCommand := command.fetch; fetchCommand != nil {
